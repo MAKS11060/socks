@@ -1,21 +1,21 @@
 #!/usr/bin/env -S deno run -A --unstable-hmr
 
+/*
+  https://en.wikipedia.org/wiki/SOCKS
+  https://ru.wikipedia.org/wiki/SOCKS
+*/
+
 import {copy} from 'jsr:@std/io'
-import {parseAuthPassword} from "./utils.ts"
+import {ENABLE_AUTH, LOCAL_MODE, passwd} from './config.ts'
+import {parseAuthPassword} from './utils.ts'
 
 const bndAddr = new Uint8Array(4)
-Deno.networkInterfaces().forEach((ni) => {
-  if (ni.name === 'lo' && ni.address === '127.0.0.1') {
-    ni.address.split('.').forEach((octet, i) => {
-      bndAddr[i] = parseInt(octet)
-    })
+for (const {address} of Deno.networkInterfaces()) {
+  if (address === '127.0.0.1') {
+    bndAddr.set(address.split('.').map((octet) => parseInt(octet)))
+    break
   }
-})
-
-const ENABLE_AUTH = true
-const passwd = new Map<string, string>()
-passwd.set('4ae1d8bfa6bd45d8', 'b4d7-8d453c61c25b')
-
+}
 
 enum AUTH_METHODS {
   NoAuthentication = 0x00,
@@ -24,13 +24,15 @@ enum AUTH_METHODS {
 }
 
 const listener = Deno.listen({port: 80})
+// const listener = Deno.listen({port: 40443})
 
 for await (const conn of listener) {
-  // if (!conn.remoteAddr.hostname.startsWith('192.168.100.')) {
-  //   console.log('pre close', conn.remoteAddr.hostname)
-  //   conn.close()
-  //   continue
-  // }
+  if (LOCAL_MODE && !conn.remoteAddr.hostname.startsWith('192.168.100.')) {
+    console.log('pre close', conn.remoteAddr.hostname)
+    conn.close()
+    continue
+  }
+
   handleConnection(conn).catch((e) => {
     console.error(e)
   })
@@ -71,22 +73,6 @@ async function handleConnection(conn: Deno.TcpConn) {
   if (method === AUTH_METHODS.Password) {
     const n = await conn.read(buf)
 
-    // console.log({buf})
-    // const u = new Uint8Array(buf, buf.at(1))
-    // console.log({u})
-    // // const u = new Uint8Array(buf, buf.at(1))
-
-    // const usernameLen = buf.at(1) as number
-    // const username = new TextDecoder().decode(buf.subarray(2, 2 + usernameLen))
-    // const passwordLen = buf.at(2 + usernameLen) as number
-    // const password = new TextDecoder().decode(
-    //   buf.subarray(3 + usernameLen, 3 + usernameLen + passwordLen)
-    // )
-
-    // buf.subarray(2, 2 + usernameLen)
-    // buf.subarray(3 + usernameLen, 3 + usernameLen + passwordLen)
-    // console.log(`${usernameLen}, ${username}, ${passwordLen}, ${password}`)
-    console.log(buf)
     const cred = parseAuthPassword(buf)
     if (passwd.get(cred.username) !== cred.password) {
       console.error(`login: ${cred.username}:${cred.password}`)
@@ -95,7 +81,7 @@ async function handleConnection(conn: Deno.TcpConn) {
       return
     }
 
-    await conn.write(new Uint8Array([0x01, 0x00]))
+    await conn.write(new Uint8Array([0x01, 0x00])) // success
   }
 
   // Read client request
@@ -134,11 +120,13 @@ async function handleConnection(conn: Deno.TcpConn) {
     return
   }
 
+  const localPort = new Uint8Array(2) // [00, 80]
+  new DataView(localPort.buffer).setUint16(0, conn.localAddr.port)
+
   await conn.write(
-    new Uint8Array([0x05, 0x00, 0x00, 0x01, ...bndAddr, 0x00, 0x50])
+    new Uint8Array([0x05, 0x00, 0x00, 0x01, ...bndAddr, ...localPort])
   )
 
-  // console.log('bind conn')
   console.log(`conn from: ${conn.remoteAddr.hostname} to ${addr}:${port}`)
   try {
     await Promise.all([
