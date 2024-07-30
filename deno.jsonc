@@ -1,0 +1,8 @@
+{
+  "lock": false,
+  "tasks": {
+    "dev": "deno run -A --unstable-hrm main.ts",
+    "test": "deno test -A",
+    "start": "deno run -A main.ts"
+  }
+}
