@@ -6,8 +6,8 @@
 */
 
 import {copy} from 'jsr:@std/io'
-import {ENABLE_AUTH, LOCAL_MODE, passwd} from './config.ts'
-import {parseAuthPassword} from './utils.ts'
+import {ENABLE_AUTH, LOCAL_WITHOUT_AUTH, passwd} from './config.ts'
+import {isLocalAddr, parseAuthPassword} from './utils.ts'
 
 const bndAddr = new Uint8Array(4)
 for (const {address} of Deno.networkInterfaces()) {
@@ -27,12 +27,6 @@ const listener = Deno.listen({port: 80})
 // const listener = Deno.listen({port: 40443})
 
 for await (const conn of listener) {
-  if (LOCAL_MODE && !conn.remoteAddr.hostname.startsWith('192.168.100.')) {
-    console.log('pre close', conn.remoteAddr.hostname)
-    conn.close()
-    continue
-  }
-
   handleConnection(conn).catch((e) => {
     console.error(e)
   })
@@ -62,7 +56,11 @@ async function handleConnection(conn: Deno.TcpConn) {
     method = AUTH_METHODS.no_supported
   }
 
-  // console.log(`auth method: ${AUTH_METHODS[method]}`, buf.slice(0, 8))
+  if (LOCAL_WITHOUT_AUTH && isLocalAddr(conn)) {
+    method = AUTH_METHODS.NoAuthentication
+  }
+
+  // console.log(`auth method: ${AUTH_METHODS[method]}`, buf.slice(0, 16))
   await conn.write(new Uint8Array([0x05, method]))
   if (method === AUTH_METHODS.no_supported) {
     conn.close()

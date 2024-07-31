@@ -1,5 +1,5 @@
 export const ENABLE_AUTH = true
-export const LOCAL_MODE = false // 192.168.100.*
+export const LOCAL_WITHOUT_AUTH = true // 127.0.0.1 192.168.100.*
 
 export const passwd = new Map<string, string>()
 

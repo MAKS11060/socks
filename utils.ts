@@ -18,3 +18,8 @@ export const parseAuthPassword = (buf: Uint8Array) => {
     password: decoder.decode(password),
   }
 }
+
+export const isLocalAddr = (conn: Deno.TcpConn) => {
+  if (conn.remoteAddr.hostname.startsWith('192.168.')) return true
+  if (conn.remoteAddr.hostname.startsWith('127.0.0.1')) return true
+}
