@@ -6,7 +6,12 @@
 */
 
 import {copy} from 'jsr:@std/io'
-import {ENABLE_AUTH, LOCAL_WITHOUT_AUTH, passwd} from './config.ts'
+import {
+  ENABLE_AUTH,
+  LOCAL_WITHOUT_AUTH,
+  passwd,
+  RESTRICT_LOCAL,
+} from './config.ts'
 import {isLocalAddr, parseAuthPassword} from './utils.ts'
 
 const bndAddr = new Uint8Array(4)
@@ -73,7 +78,9 @@ async function handleConnection(conn: Deno.TcpConn) {
 
     const cred = parseAuthPassword(buf)
     if (passwd.get(cred.username) !== cred.password) {
-      console.error(`login: ${cred.username}:${cred.password}`)
+      console.error(
+        `${conn.remoteAddr.hostname} login failed: ${cred.username}:${cred.password}`
+      )
       await conn.write(new Uint8Array([0x01, 0x01]))
       conn.close()
       return
@@ -109,9 +116,16 @@ async function handleConnection(conn: Deno.TcpConn) {
   }
 
   // Connect to target server
-  let targetConn: Deno.Conn
+  let targetConn: Deno.TcpConn
   try {
     targetConn = await Deno.connect({hostname: addr, port})
+    if (RESTRICT_LOCAL && isLocalAddr(targetConn)) {
+      console.error(`Restrict: ${conn.remoteAddr.hostname} to ${addr}:${port}`)
+      targetConn.close()
+      await conn.write(new Uint8Array([0x05, 0x02]))
+      conn.close()
+      return
+    }
   } catch (e) {
     await conn.write(new Uint8Array([0x05, 0x05, 0x00, atyp]))
     conn.close()
